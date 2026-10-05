@@ -19,50 +19,43 @@ def mean_field_glauber(t, m, W, beta):
 
 N = 20
 
-# エッジが存在する確率
-EDGE_PROBABILITY = 0.20
+# エッジ密度
+# 例：0.20 → 最大可能エッジ数の20%を必ず使用
+EDGE_DENSITY = 0.20
 
 # 再現性
 np.random.seed(42)
 
 
 # ============================================================
-# スパースな対称結合行列 W を生成
-# ============================================================
-
-# まずランダムな実数値結合を作る
-# ============================================================
 # 0/1の対称結合行列 W を生成
 # ============================================================
 
-# ランダムにエッジの有無を決める
-edge_mask = np.random.rand(N, N) < EDGE_PROBABILITY
+# 最大可能エッジ数
+num_possible_edges = N * (N - 1) // 2
 
-# 上三角部分だけを使う
-edge_mask = np.triu(edge_mask, k=1)
+# 指定したエッジ密度から実際のエッジ数を決定
+num_edges = round(EDGE_DENSITY * num_possible_edges)
 
-# 対称化
-edge_mask = edge_mask + edge_mask.T
+# 上三角部分の全候補エッジ
+upper_i, upper_j = np.triu_indices(N, k=1)
 
-# bool → 0/1 の整数
-W = edge_mask.astype(float)
+# エッジをランダムに選択
+selected = np.random.choice(
+    len(upper_i),
+    size=num_edges,
+    replace=False
+)
 
-# 自己結合なし
-np.fill_diagonal(W, 0)
+# 0行列からスタート
+W = np.zeros((N, N), dtype=float)
 
-# ------------------------------------------------------------
-# エッジの有無を決める
-# ------------------------------------------------------------
+# 選ばれたエッジを1にする
+i = upper_i[selected]
+j = upper_j[selected]
 
-# 上三角部分だけでエッジの有無を決める
-edge_mask = np.random.rand(N, N) < EDGE_PROBABILITY
-
-# 対称化
-edge_mask = np.triu(edge_mask, k=1)
-edge_mask = edge_mask + edge_mask.T
-
-# エッジがない場所を0にする
-W[edge_mask == 0] = 0
+W[i, j] = 1
+W[j, i] = 1
 
 # 自己結合なし
 np.fill_diagonal(W, 0)
@@ -72,14 +65,11 @@ np.fill_diagonal(W, 0)
 # ネットワークの確認
 # ============================================================
 
-num_possible_edges = N * (N - 1) // 2
-num_edges = np.sum(np.triu(W != 0, k=1))
-
 print("ノード数 =", N)
-print("エッジ存在確率 =", EDGE_PROBABILITY)
+print("指定エッジ密度 =", EDGE_DENSITY)
 print("実際のエッジ数 =", num_edges)
 print("最大可能エッジ数 =", num_possible_edges)
-print("エッジ密度 =", num_edges / num_possible_edges)
+print("実際のエッジ密度 =", num_edges / num_possible_edges)
 
 
 # ============================================================
@@ -138,6 +128,8 @@ plt.xlabel("Time t")
 plt.ylabel("Magnetization m_i(t)")
 plt.title("Mean-Field Glauber Dynamics")
 
+plt.tight_layout()
+
 
 # ============================================================
 # 時系列データを保存
@@ -146,7 +138,7 @@ plt.title("Mean-Field Glauber Dynamics")
 data = np.column_stack((sol.t, sol.y.T))
 
 np.savetxt(
-    "time_series2.csv",
+    "time_series1.csv",
     data,
     delimiter=",",
     header="time," + ",".join([f"node_{i+1}" for i in range(N)]),
@@ -159,13 +151,13 @@ np.savetxt(
 # ============================================================
 
 np.savetxt(
-    "W2.csv",
+    "W1.csv",
     W,
     delimiter=","
 )
 
-print("時系列データを time_series2.csv に保存しました")
-print("結合行列 W を W2.csv に保存しました")
+print("時系列データを time_series1.csv に保存しました")
+print("結合行列 W を W1.csv に保存しました")
 
 
 plt.show()
