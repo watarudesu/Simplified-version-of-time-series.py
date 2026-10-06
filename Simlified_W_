@@ -1,0 +1,518 @@
+import numpy as np
+import matplotlib.pyplot as plt
+import networkx as nx
+
+plt.rcParams["font.size"] = 18
+# ============================================================
+# 1. 元のネットワーク W を作成
+# ============================================================
+
+N = 20
+EDGE_DENSITY = 0.20
+
+np.random.seed(42)
+
+num_possible_edges = N * (N - 1) // 2
+num_edges = round(EDGE_DENSITY * num_possible_edges)
+
+upper_i, upper_j = np.triu_indices(N, k=1)
+
+selected = np.random.choice(
+    len(upper_i),
+    size=num_edges,
+    replace=False
+)
+
+W = np.zeros((N, N), dtype=float)
+
+i = upper_i[selected]
+j = upper_j[selected]
+
+W[i, j] = 1
+W[j, i] = 1
+
+np.fill_diagonal(W, 0)
+
+
+# ============================================================
+# 2. 元の Tc と最大固有値・固有ベクトルを計算
+# ============================================================
+
+print("========================================")
+print("元のネットワーク")
+print("========================================")
+
+print("ノード数 =", N)
+print("エッジ数 =", num_edges)
+print("エッジ密度 =", num_edges / num_possible_edges)
+
+
+# W は対称行列なので eigh を使用
+eigenvalues, eigenvectors = np.linalg.eigh(W)
+
+# 最大固有値
+lambda_max = eigenvalues[-1]
+
+# 最大固有値に対応する固有ベクトル
+v = eigenvectors[:, -1]
+
+# 今回は Tc = lambda_max
+Tc = lambda_max
+
+print("最大固有値 =", lambda_max)
+print("元の臨界温度 Tc =", Tc)
+
+print()
+print("最大固有値に対応する固有ベクトル v:")
+print(v)
+
+print()
+print("固有ベクトルのノルム =", np.linalg.norm(v))
+
+
+# ============================================================
+# 3. 各エッジを1本ずつ削除して実測値を計算
+# ============================================================
+
+results = []
+
+for i in range(N):
+    for j in range(i + 1, N):
+
+        # 元々エッジが存在する場合だけ削除
+        if W[i, j] == 1:
+
+            # ------------------------------------------------
+            # エッジを1本削除した W_hat
+            # ------------------------------------------------
+
+            W_error = W.copy()
+
+            W_error[i, j] = 0
+            W_error[j, i] = 0
+
+
+            # ------------------------------------------------
+            # W_hat の最大固有値を直接計算
+            # ------------------------------------------------
+
+            eigenvalues_error = np.linalg.eigvalsh(W_error)
+
+            lambda_max_error = eigenvalues_error[-1]
+
+            Tc_error = lambda_max_error
+
+
+            # ------------------------------------------------
+            # 実測された Tc の変化量
+            # ------------------------------------------------
+
+            delta_Tc_actual = Tc_error - Tc
+
+
+            # ------------------------------------------------
+            # 摂動論による理論値
+            #
+            # エッジ削除なので
+            #
+            # Delta_ij = -1
+            #
+            # delta Tc ≈ 2 Delta_ij vi vj
+            #
+            #            = -2 vi vj
+            # ------------------------------------------------
+
+            delta_ij = -1
+
+            delta_Tc_theory = (
+                2
+                * delta_ij
+                * v[i]
+                * v[j]
+            )
+
+
+            # ------------------------------------------------
+            # x軸用：vi * vj
+            # ------------------------------------------------
+
+            vi_vj = v[i] * v[j]
+
+
+            # ------------------------------------------------
+            # 実測値と理論値の絶対誤差
+            # ------------------------------------------------
+
+            approximation_error = abs(
+                delta_Tc_actual
+                - delta_Tc_theory
+            )
+
+
+            # ------------------------------------------------
+            # 結果を保存
+            # ------------------------------------------------
+
+            results.append(
+                (
+                    i,
+                    j,
+                    Tc_error,
+                    delta_Tc_actual,
+                    delta_Tc_theory,
+                    vi_vj,
+                    approximation_error
+                )
+            )
+
+
+# ============================================================
+# 4. 結果を表示
+# ============================================================
+
+print()
+print("========================================")
+print("エッジ削除による Tc の変化")
+print("========================================")
+
+print(
+    f"{'Edge':<10}"
+    f"{'vi*vj':<15}"
+    f"{'Actual':<15}"
+    f"{'Theory':<15}"
+    f"{'Error':<15}"
+)
+
+for result in results:
+
+    (
+        i,
+        j,
+        Tc_error,
+        delta_Tc_actual,
+        delta_Tc_theory,
+        vi_vj,
+        approximation_error
+    ) = result
+
+    print(
+        f"({i+1},{j+1})"
+        f"{vi_vj:<15.6f}"
+        f"{delta_Tc_actual:<15.6f}"
+        f"{delta_Tc_theory:<15.6f}"
+        f"{approximation_error:<15.6f}"
+    )
+
+
+# ============================================================
+# 5. グラフ用データを取り出す
+# ============================================================
+
+x_values = np.array([
+    result[5]
+    for result in results
+])
+
+actual_values = np.array([
+    result[3]
+    for result in results
+])
+
+theory_values = np.array([
+    result[4]
+    for result in results
+])
+
+
+# ============================================================
+# 6. グラフ①
+#
+# 実測値 vs vi*vj
+#
+# 青い点：
+#   実際にエッジを削除して計算した Delta Tc
+#
+# 破線：
+#   摂動論による予測
+#   Delta Tc = -2 vi vj
+# ============================================================
+
+plt.figure(figsize=(9, 7))
+
+plt.scatter(
+    x_values,
+    actual_values,
+    s=60,
+    label="Actual"
+)
+
+
+x_line = np.linspace(
+    x_values.min(),
+    x_values.max(),
+    200
+)
+
+delta_ij = -1
+
+y_line = (
+    2
+    * delta_ij
+    * x_line
+)
+
+plt.plot(
+    x_line,
+    y_line,
+    linestyle="--",
+    linewidth=2,
+    label=r"Theory: $2\Delta_{ij}v_iv_j$"
+)
+
+plt.axhline(
+    0,
+    linewidth=1
+)
+
+plt.xlabel(
+    r"$v_i v_j$"
+)
+
+plt.ylabel(
+    r"$\Delta T_c$"
+)
+
+plt.title(
+    r"Actual $\Delta T_c$ vs. $v_i v_j$"
+)
+
+plt.legend()
+
+plt.grid(
+    alpha=0.3
+)
+
+plt.tight_layout()
+
+# 保存
+plt.savefig(
+    "01_actual_vs_vivj.png",
+    dpi=300,
+    bbox_inches="tight"
+)
+
+# グラフを閉じる
+plt.close()
+
+print()
+print("保存完了：01_actual_vs_vivj.png")
+
+
+# ============================================================
+# 7. グラフ②
+#
+# 実測値 vs 理論値
+#
+# 横軸：
+#   2 Delta_ij vi vj
+#
+# 縦軸：
+#   実測 Delta Tc
+#
+# 破線：
+#   y = x
+# ============================================================
+
+plt.figure(figsize=(8, 8))
+
+plt.scatter(
+    theory_values,
+    actual_values,
+    s=60,
+    label="Actual"
+)
+
+
+# y = x の完全一致線
+
+min_value = min(
+    theory_values.min(),
+    actual_values.min()
+)
+
+max_value = max(
+    theory_values.max(),
+    actual_values.max()
+)
+
+plt.plot(
+    [min_value, max_value],
+    [min_value, max_value],
+    linestyle="--",
+    linewidth=2,
+    label=r"$y=x$"
+)
+
+plt.xlabel(
+    r"Theoretical $\delta T_c \approx 2\Delta_{ij}v_iv_j$"
+)
+
+plt.ylabel(
+    r"Actual $\Delta T_c$"
+)
+
+plt.title(
+    r"Actual vs. Theoretical $\Delta T_c$"
+)
+
+plt.legend()
+
+plt.grid(
+    alpha=0.3
+)
+
+plt.tight_layout()
+
+# 保存
+plt.savefig(
+    "02_actual_vs_theory.png",
+    dpi=300,
+    bbox_inches="tight"
+)
+
+# グラフを閉じる
+plt.close()
+
+print("保存完了：02_actual_vs_theory.png")
+
+
+# ============================================================
+# 8. グラフ③
+#
+# ネットワーク上にエッジ感度を表示
+#
+# 太いエッジ：
+#   そのエッジを削除したときの |Delta Tc| が大きい
+#
+# 細いエッジ：
+#   そのエッジを削除しても |Delta Tc| が小さい
+# ============================================================
+
+G = nx.from_numpy_array(W)
+
+pos = nx.spring_layout(
+    G,
+    seed=42
+)
+
+
+# ------------------------------------------------------------
+# 各エッジの実測された Tc 変化量を保存
+# ------------------------------------------------------------
+
+edge_sensitivity = {}
+
+for result in results:
+
+    i, j = result[0], result[1]
+
+    actual_delta = result[3]
+
+    edge_key = (
+        min(i, j),
+        max(i, j)
+    )
+
+    edge_sensitivity[edge_key] = abs(
+        actual_delta
+    )
+
+
+# ------------------------------------------------------------
+# エッジの太さを決定
+# ------------------------------------------------------------
+
+edge_widths = []
+
+for i, j in G.edges():
+
+    edge_key = (
+        min(i, j),
+        max(i, j)
+    )
+
+    sensitivity = edge_sensitivity[
+        edge_key
+    ]
+
+    width = 1 + 15 * sensitivity
+
+    edge_widths.append(width)
+
+
+# ------------------------------------------------------------
+# ネットワークを描画
+# ------------------------------------------------------------
+
+plt.figure(figsize=(10, 8))
+
+nx.draw_networkx_nodes(
+    G,
+    pos,
+    node_size=500
+)
+
+nx.draw_networkx_labels(
+    G,
+    pos,
+    labels={
+        i: i + 1
+        for i in G.nodes()
+    }
+)
+
+nx.draw_networkx_edges(
+    G,
+    pos,
+    width=edge_widths
+)
+
+plt.title(
+    r"Edge sensitivity to $T_c$"
+    "\n"
+    r"(thicker = larger $|\Delta T_c|$)"
+)
+
+plt.axis("off")
+
+plt.tight_layout()
+
+# 保存
+plt.savefig(
+    "03_edge_sensitivity_network.png",
+    dpi=300,
+    bbox_inches="tight"
+)
+
+# グラフを閉じる
+plt.close()
+
+print("保存完了：03_edge_sensitivity_network.png")
+
+
+# ============================================================
+# 9. 完了
+# ============================================================
+
+print()
+print("========================================")
+print("すべての処理が完了しました")
+print("========================================")
+
+print()
+print("以下の3つの画像を保存しました：")
+print()
+print("1. 01_actual_vs_vivj.png")
+print("2. 02_actual_vs_theory.png")
+print("3. 03_edge_sensitivity_network.png")
+print()
